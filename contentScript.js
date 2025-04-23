@@ -7,21 +7,16 @@
 
 /**
  * Builds the notification elements to inform the user they were redirected to the PWA.
- * @param originalMeetContents the original element that was replaced with the redirect notification
- * @param originalMeetContentsDisplay the original display style of the original element
  * @returns {HTMLDivElement} the overlay element containing the notification
  */
-function buildNotificationElements(
-  originalMeetContents,
-  originalMeetContentsDisplay
-) {
+function buildNotificationElements() {
   const pageContainerOverlay = document.createElement("div");
   pageContainerOverlay.style.position = "absolute";
   pageContainerOverlay.style.top = "0";
   pageContainerOverlay.style.left = "0";
   pageContainerOverlay.style.width = "100%";
   pageContainerOverlay.style.height = "100%";
-  pageContainerOverlay.style.backgroundColor = "rgba(0,0,0,.2)";
+  pageContainerOverlay.style.backgroundColor = "rgba(0,0,0,.8)";
   pageContainerOverlay.style.zIndex = "9999";
   pageContainerOverlay.style.display = "flex";
   pageContainerOverlay.style.justifyContent = "center";
@@ -58,9 +53,13 @@ function buildNotificationElements(
   useThisTabButton.style.fontSize = "16px";
   useThisTabButton.style.cursor = "pointer";
 
-  useThisTabButton.onclick = function () {
-    originalMeetContents.style.display = originalMeetContentsDisplay;
+  const dismissOverlay = () => {
     pageContainerOverlay.remove();
+  };
+  useThisTabButton.onclick = dismissOverlay;
+  pageContainerOverlay.onclick = dismissOverlay;
+  messageCard.onclick = (e) => {
+    e.stopPropagation();
   };
 
   pageContainerOverlay.appendChild(messageCard);
@@ -120,15 +119,7 @@ function buildNotificationElements(
     // Normal tab, add listener to replace UI with
     chrome.storage.onChanged.addListener(function (changes) {
       if (changes["originatingTabId"] && changes["originatingTabId"].newValue) {
-        // could improve this. it only properly replaces if you navigated to a meet.google.com/some-slug
-        // it does not know how to replace the landing page.
-        const originalMeetContents = document.body.childNodes[1];
-        originalMeetContents.style.display = "none";
-
-        const pageContainerOverlay = buildNotificationElements(
-          originalMeetContents,
-          'block'
-        );
+        const pageContainerOverlay = buildNotificationElements();
 
         document.body.appendChild(pageContainerOverlay);
       }

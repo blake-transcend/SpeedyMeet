@@ -78,8 +78,8 @@ function buildNotificationElements() {
     chrome.storage.onChanged.addListener(function (changes) {
       if (changes['queryParams'] && changes['queryParams'].newValue !== '__gmInitialState') {
         const meetingCodeRegex = /([a-z0-9]{3,5}-[a-z0-9]{3,5}-[a-z0-9]{3,5})/i;
-        const [currentMeetingCode] = window.location.pathname.match(meetingCodeRegex);
-        const [newMeetingCode] = changes['queryParams'].newValue.match(meetingCodeRegex);
+        const [currentMeetingCode] = window.location.pathname.match(meetingCodeRegex) || [];
+        const [newMeetingCode] = changes['queryParams'].newValue.match(meetingCodeRegex) || [];
         const onCall = !!currentMeetingCode;
 
         // if same meeting

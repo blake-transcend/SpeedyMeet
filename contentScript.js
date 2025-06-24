@@ -73,6 +73,19 @@ function buildNotificationElements() {
   return pageContainerOverlay;
 }
 
+function disableVideoAndMicConfig() {
+  chrome.storage.local.get(['disableMic', 'disableVideo'], (res) => {
+    var disableMicBtn = document.querySelector('[aria-label="Turn off microphone"]');
+    var disableVideoBtn = document.querySelector('[aria-label="Turn off camera"]');
+    if (disableMicBtn && res.disableMic) {
+      disableMicBtn.click();
+    }
+    if (disableVideoBtn && res.disableVideo) {
+      disableVideoBtn.click();
+    }
+  });
+}
+
 (() => {
   if (isPwa()) {
     chrome.storage.onChanged.addListener(function (changes) {
@@ -80,7 +93,8 @@ function buildNotificationElements() {
         const meetingCodeRegex = /([a-z0-9]{3,5}-[a-z0-9]{3,5}-[a-z0-9]{3,5})/i;
         const [currentMeetingCode] = window.location.pathname.match(meetingCodeRegex) || [];
         const [newMeetingCode] = changes['queryParams'].newValue.match(meetingCodeRegex) || [];
-        const onCall = !!currentMeetingCode;
+        const onCall =
+          !!currentMeetingCode && document.querySelector('[aria-label="Call controls"]');
 
         // if same meeting
         if (onCall && newMeetingCode === currentMeetingCode) {
@@ -116,6 +130,11 @@ function buildNotificationElements() {
         const currentHref = window.location.href;
         const newHref = 'https://meet.google.com/' + newQueryParams;
         if (currentHref !== newHref) {
+          // opening meeting so we can close original tab
+          chrome.storage.local.set({
+            googleMeetOpenedUrl: new Date().toISOString(),
+          });
+
           window.location.href = 'https://meet.google.com/' + newQueryParams;
         }
 
@@ -123,8 +142,15 @@ function buildNotificationElements() {
         chrome.storage.local.set({
           googleMeetOpenedUrl: new Date().toISOString(),
         });
+
+        // disable mic & video if configured
+        disableVideoAndMicConfig();
       }
     });
+
+    setTimeout(() => {
+      disableVideoAndMicConfig();
+    }, 1000);
   } else {
     // Normal tab, add listener to replace UI with
     chrome.storage.onChanged.addListener(function (changes) {

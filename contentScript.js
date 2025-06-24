@@ -13,29 +13,11 @@ const OVERLAY_ID = 'meet-switch-overlay';
  */
 function buildNotificationElements() {
   const pageContainerOverlay = document.createElement('div');
-  pageContainerOverlay.style.position = 'absolute';
-  pageContainerOverlay.style.top = '0';
-  pageContainerOverlay.style.left = '0';
-  pageContainerOverlay.style.width = '100%';
-  pageContainerOverlay.style.height = '100%';
-  pageContainerOverlay.style.backgroundColor = 'rgba(0,0,0,.8)';
-  pageContainerOverlay.style.zIndex = '9999';
-  pageContainerOverlay.style.display = 'flex';
-  pageContainerOverlay.style.justifyContent = 'center';
-  pageContainerOverlay.style.alignItems = 'center';
+  pageContainerOverlay.className = 'meet-switch-overlay';
   pageContainerOverlay.id = OVERLAY_ID;
 
   const messageCard = document.createElement('div');
-  messageCard.style.backgroundColor = 'white';
-  messageCard.style.padding = '2em 4em';
-  messageCard.style.borderRadius = '1em';
-  messageCard.style.boxShadow = '0 4px 8px rgba(0,0,0,.2)';
-  messageCard.style.fontSize = '1.5em';
-  messageCard.style.display = 'flex';
-  messageCard.style.flexDirection = 'column';
-  messageCard.style.alignItems = 'center';
-  messageCard.style.justifyContent = 'center';
-  messageCard.style.width = 'max(50%, 400px)';
+  messageCard.className = 'meet-switch-message-card';
 
   const cardHeader = document.createElement('h1');
   cardHeader.textContent = 'Opening in Google Meet PWA';
@@ -47,14 +29,7 @@ function buildNotificationElements() {
 
   const useThisTabButton = document.createElement('button');
   useThisTabButton.textContent = 'Use this tab instead';
-  useThisTabButton.style.backgroundColor = 'blue';
-  useThisTabButton.style.color = 'white';
-  useThisTabButton.style.border = 'none';
-  useThisTabButton.style.padding = '10px 20px';
-  useThisTabButton.style.borderRadius = '.5em';
-  useThisTabButton.style.fontWeight = '600';
-  useThisTabButton.style.fontSize = '16px';
-  useThisTabButton.style.cursor = 'pointer';
+  useThisTabButton.className = 'meet-switch-use-tab-btn btn';
 
   const dismissOverlay = () => {
     pageContainerOverlay.remove();
@@ -73,6 +48,41 @@ function buildNotificationElements() {
   return pageContainerOverlay;
 }
 
+function buildNextMeetingAlert(onClick) {
+  const container = document.createElement('div');
+  container.className = 'meet-next-meeting-alert';
+
+  const message = document.createElement('div');
+  message.textContent = 'You have a new meeting starting!';
+  message.className = 'meet-next-meeting-message';
+
+  const switchBtn = document.createElement('button');
+  switchBtn.textContent = 'Switch to meeting';
+  switchBtn.className = 'meet-next-meeting-switch-btn btn';
+  switchBtn.onclick = () => {
+    onClick(true);
+    container.remove();
+  };
+
+  const dismissBtn = document.createElement('button');
+  dismissBtn.textContent = 'Dismiss';
+  dismissBtn.className = 'meet-next-meeting-dismiss-btn btn';
+  dismissBtn.onclick = () => {
+    onClick(false);
+    container.remove();
+  };
+
+  const btnContainer = document.createElement('div');
+  btnContainer.className = 'meet-next-meeting-btn-container';
+
+  btnContainer.appendChild(switchBtn);
+  btnContainer.appendChild(dismissBtn);
+  container.appendChild(message);
+  container.appendChild(btnContainer);
+
+  return container;
+}
+
 function disableVideoAndMicConfig() {
   chrome.storage.local.get(['disableMic', 'disableVideo'], (res) => {
     var disableMicBtn = document.querySelector('[aria-label="Turn off microphone"]');
@@ -84,6 +94,34 @@ function disableVideoAndMicConfig() {
       disableVideoBtn.click();
     }
   });
+}
+
+function switchToNewCall(changes) {
+  const newPath = changes['queryParams'].newValue;
+  const newQueryParams = newPath.includes('?')
+    ? newPath.includes('authuser=')
+      ? newPath
+      : newPath + '&authuser=0'
+    : newPath + '?authuser=0';
+
+  const currentHref = window.location.href;
+  const newHref = 'https://meet.google.com/' + newQueryParams;
+  if (currentHref !== newHref) {
+    // opening meeting so we can close original tab
+    chrome.storage.local.set({
+      googleMeetOpenedUrl: new Date().toISOString(),
+    });
+
+    window.location.href = 'https://meet.google.com/' + newQueryParams;
+  }
+
+  // close original tab
+  chrome.storage.local.set({
+    googleMeetOpenedUrl: new Date().toISOString(),
+  });
+
+  // disable mic & video if configured
+  disableVideoAndMicConfig();
 }
 
 (() => {
@@ -105,46 +143,24 @@ function disableVideoAndMicConfig() {
           return;
         }
         // if different meeting and on call
-        if (
-          onCall &&
-          // if declined to switch
-          !confirm('A new meeting is starting, do you want to switch to the new meeting?')
-        ) {
-          // reset params
-          chrome.storage.local.set({
-            originatingTabId: '',
-            queryParams: '__gmInitialState',
-            source: '',
-            googleMeetDeclinedUrl: new Date().toISOString(),
-          });
-          return;
+        if (onCall) {
+          document.body.prepend(
+            buildNextMeetingAlert((shouldSwitch) => {
+              if (shouldSwitch) {
+                switchToNewCall(changes);
+              } else {
+                chrome.storage.local.set({
+                  originatingTabId: '',
+                  queryParams: '__gmInitialState',
+                  source: '',
+                  googleMeetDeclinedUrl: new Date().toISOString(),
+                });
+              }
+            }),
+          );
+        } else {
+          switchToNewCall(changes);
         }
-
-        const newPath = changes['queryParams'].newValue;
-        const newQueryParams = newPath.includes('?')
-          ? newPath.includes('authuser=')
-            ? newPath
-            : newPath + '&authuser=0'
-          : newPath + '?authuser=0';
-
-        const currentHref = window.location.href;
-        const newHref = 'https://meet.google.com/' + newQueryParams;
-        if (currentHref !== newHref) {
-          // opening meeting so we can close original tab
-          chrome.storage.local.set({
-            googleMeetOpenedUrl: new Date().toISOString(),
-          });
-
-          window.location.href = 'https://meet.google.com/' + newQueryParams;
-        }
-
-        // close original tab
-        chrome.storage.local.set({
-          googleMeetOpenedUrl: new Date().toISOString(),
-        });
-
-        // disable mic & video if configured
-        disableVideoAndMicConfig();
       }
     });
 

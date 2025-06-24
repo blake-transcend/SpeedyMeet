@@ -1,0 +1,113 @@
+/* Overlay for notification */
+.meet-switch-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.8);
+  z-index: 9999;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Notification card */
+.meet-switch-message-card {
+  background-color: white;
+  padding: 2em 4em;
+  border-radius: 1em;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  font-size: 1.5em;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: max(50%, 400px);
+}
+
+/* Shared button hover/active transitions */
+.btn {
+  transition: opacity 0.2s;
+  font-weight: 600;
+}
+.btn:hover {
+  opacity: 0.8;
+}
+.btn:active {
+  opacity: 0.6;
+}
+
+/* Notification button */
+.meet-switch-use-tab-btn {
+  background-color: blue;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 0.5em;
+  font-weight: 600;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+/* Next meeting alert container */
+.meet-next-meeting-alert {
+  display: flex;
+  gap: 1em;
+  align-items: center;
+  background-color: rgba(220, 91, 91, 0.8);
+  padding: 1em;
+  border-radius: 0.5em;
+  color: white;
+  position: absolute;
+  top: 0.5em;
+  left: 0.5em;
+  z-index: 1000;
+  animation: pulsateOpacity 2s infinite;
+}
+
+/* Next meeting alert message */
+.meet-next-meeting-message {
+  font-size: 1.2em;
+  font-weight: bold;
+  flex-grow: 1;
+}
+
+/* Next meeting alert button container */
+.meet-next-meeting-btn-container {
+  display: flex;
+  gap: 1em;
+  align-items: center;
+}
+
+/* Switch to meeting button */
+.meet-next-meeting-switch-btn {
+  background-color: rgba(255, 255, 255, 0.8);
+  color: black;
+  border: none;
+  padding: 0.5em 1em;
+  border-radius: 0.5em;
+  cursor: pointer;
+}
+
+/* Dismiss button */
+.meet-next-meeting-dismiss-btn {
+  background-color: rgba(190, 190, 190, 0.8);
+  color: black;
+  border: none;
+  padding: 0.5em 1em;
+  border-radius: 0.5em;
+  cursor: pointer;
+}
+
+@keyframes pulsateOpacity {
+  0% {
+    background-color: rgba(220, 91, 91, 0.8);
+  }
+  50% {
+    background-color: rgba(91, 108, 220, 0.8);
+  }
+  100% {
+    background-color: rgba(220, 91, 91, 0.8);
+  }
+}

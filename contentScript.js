@@ -83,62 +83,244 @@ function buildNextMeetingAlert(onClick) {
   return container;
 }
 
-function disableVideoAndMicConfig() {
-  chrome.storage.local.get(['disableMic', 'disableVideo', 'shouldAutoJoinOverride'], (res) => {
-    // Helper to run interval with timeout
-    function runInterval(fn, intervalMs = 300, timeoutMs = 15000) {
-      const start = Date.now();
-      const interval = setInterval(() => {
-        const done = fn();
-        if (done || Date.now() - start > timeoutMs) {
-          clearInterval(interval);
-        }
-      }, intervalMs);
+/**
+ * Helper function for text-to-speech announcements
+ * @param {string} text - The text to speak
+ */
+function speakText(text) {
+  chrome.runtime.sendMessage(
+    {
+      type: 'SPEAK_TEXT',
+      text: text,
+      rate: 1.0,
+      pitch: 1.0,
+      volume: 1.0,
+    },
+    (response) => {
+      if (chrome.runtime.lastError) {
+        console.warn('Failed to send TTS message:', chrome.runtime.lastError);
+      } else {
+        console.log('TTS message sent successfully for:', text);
+      }
+    },
+  );
+}
+
+/**
+ * Finds and returns a join meeting button if available
+ * @returns {HTMLElement|null} The join button element or null if not found
+ */
+function findJoinButton() {
+  return [...document.querySelectorAll('button')].find((btn) =>
+    ['join anyway', 'join', 'ask to join', 'join now'].includes(
+      btn.innerText?.trim().toLowerCase(),
+    ),
+  );
+}
+
+/**
+ * Starts a countdown with TTS announcements before auto-joining
+ * @param {number} duration - The countdown duration in seconds
+ */
+function startAutoJoinCountdown(duration = 10) {
+  const joinMeetingButton = findJoinButton();
+  if (!joinMeetingButton) {
+    console.log('Auto-join countdown cancelled: No join button found');
+    return;
+  }
+
+  let countdown = duration;
+  let countdownInterval;
+
+  // Create countdown display element
+  const countdownDisplay = document.createElement('div');
+  countdownDisplay.className = 'auto-join-countdown-display';
+
+  // Create cancel button
+  const cancelButton = document.createElement('button');
+  cancelButton.innerText = 'Cancel Auto-Join';
+  cancelButton.className = 'auto-join-cancel-btn btn';
+
+  // Function to check if elements are still on screen and visible
+  function areElementsVisible() {
+    const countdownInDom = document.contains(countdownDisplay);
+    const cancelInDom = document.contains(cancelButton);
+    const countdownVisible = countdownInDom && countdownDisplay.offsetParent !== null;
+    const cancelVisible = cancelInDom && cancelButton.offsetParent !== null;
+
+    return {
+      countdownInDom,
+      cancelInDom,
+      countdownVisible,
+      cancelVisible,
+      bothVisible: countdownVisible && cancelVisible,
+    };
+  }
+
+  // Function to re-add elements to the page
+  function reAddElements() {
+    const currentJoinButton = findJoinButton();
+    if (!currentJoinButton || !currentJoinButton.parentNode) {
+      console.log('Cannot re-add elements: Join button not found');
+      return false;
     }
 
-    // Mic button interval
-    if (res.disableMic) {
-      runInterval(() => {
-        const disableMicBtn = document.querySelector('[aria-label="Turn off microphone"]');
-        if (disableMicBtn) {
-          disableMicBtn.click();
-          return true;
-        }
-        return false;
-      });
-    }
+    // Remove elements if they exist but are detached
+    if (countdownDisplay.parentNode) countdownDisplay.remove();
+    if (cancelButton.parentNode) cancelButton.remove();
 
-    // Video button interval
-    if (res.disableVideo) {
-      runInterval(() => {
-        const disableVideoBtn = document.querySelector('[aria-label="Turn off camera"]');
-        if (disableVideoBtn) {
-          disableVideoBtn.click();
-          return true;
-        }
-        return false;
-      });
-    }
+    // Re-add elements
+    currentJoinButton.parentNode.insertBefore(countdownDisplay, currentJoinButton.nextSibling);
+    currentJoinButton.parentNode.insertBefore(cancelButton, countdownDisplay.nextSibling);
 
-    // Join meeting button interval
-    if (res.shouldAutoJoinOverride) {
-      runInterval(() => {
-        const joinMeetingButton = [...document.querySelectorAll('button')].find((btn) =>
-          ['join anyway', 'join', 'ask to join', 'join now'].includes(
-            btn.innerText?.trim().toLowerCase(),
-          ),
-        );
-        if (joinMeetingButton) {
-          chrome.storage.local.set({
-            shouldAutoJoinOverride: false,
+    console.log('Re-added countdown elements to page');
+    return true;
+  }
+
+  // Function to cleanup and restore original state
+  function cleanup() {
+    if (countdownInterval) {
+      clearInterval(countdownInterval);
+      countdownInterval = null;
+    }
+    if (countdownDisplay && countdownDisplay.parentNode) {
+      countdownDisplay.remove();
+    }
+    if (cancelButton && cancelButton.parentNode) {
+      cancelButton.remove();
+    }
+    console.log('Auto-join countdown cleanup completed');
+  }
+
+  // Cancel button click handler
+  cancelButton.onclick = () => {
+    console.log('Auto-join cancelled by user');
+    speakText('Auto-join cancelled');
+    cleanup();
+  };
+
+  // Insert countdown display and cancel button after join button
+  if (joinMeetingButton.parentNode) {
+    joinMeetingButton.parentNode.insertBefore(countdownDisplay, joinMeetingButton.nextSibling);
+    joinMeetingButton.parentNode.insertBefore(cancelButton, countdownDisplay.nextSibling);
+  }
+
+  // Update countdown display
+  function updateCountdownDisplay() {
+    countdownDisplay.textContent = `Auto-joining in ${countdown}s`;
+  }
+
+  console.log(`Starting auto-join countdown: ${duration} seconds`);
+  speakText(`Auto-joining meeting in ${countdown} seconds`);
+  updateCountdownDisplay();
+
+  countdownInterval = setInterval(() => {
+    countdown--;
+    console.log(`Auto-join countdown: ${countdown} seconds remaining`);
+
+    if (countdown > 0) {
+      // Check if elements are still visible
+      const visibility = areElementsVisible();
+
+      if (!visibility.bothVisible) {
+        console.log('Countdown elements not visible:', visibility);
+
+        // Try to re-add elements
+        if (!reAddElements()) {
+          console.log('Failed to re-add elements, stopping countdown');
+          cleanup();
+          return;
+        }
+      }
+
+      updateCountdownDisplay();
+
+      // Announce every 5 seconds
+      if (countdown % 5 === 0) {
+        speakText(`Auto-joining in ${countdown} seconds`);
+      }
+    } else {
+      console.log('Auto-join countdown completed - joining meeting now');
+      speakText('Joining meeting now');
+      cleanup();
+
+      // Click the join button
+      const finalJoinButton = findJoinButton();
+      if (finalJoinButton) {
+        finalJoinButton.click();
+      }
+    }
+  }, 1000);
+}
+
+function disableVideoAndMicConfig(joiningNewMeeting) {
+  chrome.storage.local.get(
+    ['disableMic', 'disableVideo', 'shouldAutoJoinOverride', 'autoJoin', 'countdownDuration'],
+    (res) => {
+      // Helper to run interval with timeout
+      function runInterval(fn, intervalMs = 300, timeoutMs = 15000) {
+        const start = Date.now();
+        const interval = setInterval(() => {
+          const done = fn();
+          if (done || Date.now() - start > timeoutMs) {
+            clearInterval(interval);
+          }
+        }, intervalMs);
+      }
+
+      // Mic button interval
+      if (res.disableMic) {
+        runInterval(() => {
+          const disableMicBtn = document.querySelector('[aria-label="Turn off microphone"]');
+          if (disableMicBtn) {
+            disableMicBtn.click();
+            return true;
+          }
+          return false;
+        });
+      }
+
+      // Video button interval
+      if (res.disableVideo) {
+        runInterval(() => {
+          const disableVideoBtn = document.querySelector('[aria-label="Turn off camera"]');
+          if (disableVideoBtn) {
+            disableVideoBtn.click();
+            return true;
+          }
+          return false;
+        });
+      }
+
+      if (joiningNewMeeting) {
+        // Join meeting button interval
+        if (res.shouldAutoJoinOverride) {
+          runInterval(() => {
+            const joinMeetingButton = findJoinButton();
+            if (joinMeetingButton && window.location.pathname !== '/landing') {
+              chrome.storage.local.set({
+                shouldAutoJoinOverride: false,
+              });
+              joinMeetingButton.click();
+              return true;
+            }
+            return false;
           });
-          joinMeetingButton.click();
-          return true;
+        } else if (res.autoJoin) {
+          // If auto-join is enabled but not the override, start countdown
+          const countdownDuration = res.countdownDuration || 10;
+          runInterval(() => {
+            const joinMeetingButton = findJoinButton();
+            if (joinMeetingButton && window.location.pathname !== '/landing') {
+              startAutoJoinCountdown(countdownDuration);
+              return true;
+            }
+            return false;
+          });
         }
-        return false;
-      });
-    }
-  });
+      }
+    },
+  );
 }
 
 function switchToNewCall(changes, fromAlert) {
@@ -169,7 +351,7 @@ function switchToNewCall(changes, fromAlert) {
   closeOriginalTab();
 
   // disable mic & video if configured
-  disableVideoAndMicConfig();
+  disableVideoAndMicConfig(true);
 }
 
 function closeOriginalTab() {
@@ -223,7 +405,7 @@ function ignoreNewMeeting() {
     });
 
     setTimeout(() => {
-      disableVideoAndMicConfig();
+      disableVideoAndMicConfig(location.pathname !== '/landing');
     }, 1000);
   } else {
     // Normal tab, add listener to replace UI with

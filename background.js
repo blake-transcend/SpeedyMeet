@@ -112,3 +112,21 @@ chrome.storage.onChanged.addListener(function (changes) {
     });
   }
 });
+
+// Handle TTS requests from content scripts
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'SPEAK_TEXT') {
+    if (chrome.tts) {
+      chrome.tts.speak(message.text, {
+        rate: message.rate || 1.0,
+        pitch: message.pitch || 1.0,
+        volume: message.volume || 1.0,
+      });
+      console.log('TTS: Speaking text:', message.text);
+    } else {
+      console.warn('TTS not supported');
+    }
+    sendResponse({ success: true });
+  }
+  return true; // Keep message channel open for async response
+});

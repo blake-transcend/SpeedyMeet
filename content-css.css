@@ -111,3 +111,35 @@
     background-color: rgba(220, 91, 91, 0.8);
   }
 }
+
+/* Auto-join cancel button */
+.auto-join-cancel-btn {
+  background-color: #d93025;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  margin-left: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+/* Auto-join countdown text */
+.auto-join-countdown-text {
+  font-weight: bold;
+  color: #1a73e8;
+}
+
+/* Auto-join countdown display */
+.auto-join-countdown-display {
+  display: inline-flex;
+  align-items: center;
+  background-color: #e8f0fe;
+  border: 2px solid #1a73e8;
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-left: 12px;
+  font-weight: bold;
+  color: #1a73e8;
+  font-size: 14px;
+}

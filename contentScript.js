@@ -84,19 +84,64 @@ function buildNextMeetingAlert(onClick) {
 }
 
 function disableVideoAndMicConfig() {
-  chrome.storage.local.get(['disableMic', 'disableVideo'], (res) => {
-    var disableMicBtn = document.querySelector('[aria-label="Turn off microphone"]');
-    var disableVideoBtn = document.querySelector('[aria-label="Turn off camera"]');
-    if (disableMicBtn && res.disableMic) {
-      disableMicBtn.click();
+  chrome.storage.local.get(['disableMic', 'disableVideo', 'shouldAutoJoinOverride'], (res) => {
+    // Helper to run interval with timeout
+    function runInterval(fn, intervalMs = 300, timeoutMs = 15000) {
+      const start = Date.now();
+      const interval = setInterval(() => {
+        const done = fn();
+        if (done || Date.now() - start > timeoutMs) {
+          clearInterval(interval);
+        }
+      }, intervalMs);
     }
-    if (disableVideoBtn && res.disableVideo) {
-      disableVideoBtn.click();
+
+    // Mic button interval
+    if (res.disableMic) {
+      runInterval(() => {
+        const disableMicBtn = document.querySelector('[aria-label="Turn off microphone"]');
+        if (disableMicBtn) {
+          disableMicBtn.click();
+          return true;
+        }
+        return false;
+      });
+    }
+
+    // Video button interval
+    if (res.disableVideo) {
+      runInterval(() => {
+        const disableVideoBtn = document.querySelector('[aria-label="Turn off camera"]');
+        if (disableVideoBtn) {
+          disableVideoBtn.click();
+          return true;
+        }
+        return false;
+      });
+    }
+
+    // Join meeting button interval
+    if (res.shouldAutoJoinOverride) {
+      runInterval(() => {
+        const joinMeetingButton = [...document.querySelectorAll('button')].find((btn) =>
+          ['join anyway', 'join', 'ask to join', 'join now'].includes(
+            btn.innerText?.trim().toLowerCase(),
+          ),
+        );
+        if (joinMeetingButton) {
+          chrome.storage.local.set({
+            shouldAutoJoinOverride: false,
+          });
+          joinMeetingButton.click();
+          return true;
+        }
+        return false;
+      });
     }
   });
 }
 
-function switchToNewCall(changes) {
+function switchToNewCall(changes, fromAlert) {
   const newPath = changes['queryParams'].newValue;
   const newQueryParams = newPath.includes('?')
     ? newPath.includes('authuser=')
@@ -108,20 +153,39 @@ function switchToNewCall(changes) {
   const newHref = 'https://meet.google.com/' + newQueryParams;
   if (currentHref !== newHref) {
     // opening meeting so we can close original tab
-    chrome.storage.local.set({
-      googleMeetOpenedUrl: new Date().toISOString(),
-    });
+    closeOriginalTab();
+
+    if (fromAlert) {
+      // if switching to new meeting manually should auto join
+      chrome.storage.local.set({
+        shouldAutoJoinOverride: true,
+      });
+    }
 
     window.location.href = 'https://meet.google.com/' + newQueryParams;
   }
 
   // close original tab
-  chrome.storage.local.set({
-    googleMeetOpenedUrl: new Date().toISOString(),
-  });
+  closeOriginalTab();
 
   // disable mic & video if configured
   disableVideoAndMicConfig();
+}
+
+function closeOriginalTab() {
+  // close original tab
+  chrome.storage.local.set({
+    googleMeetOpenedUrl: new Date().toISOString(),
+  });
+}
+
+function ignoreNewMeeting() {
+  chrome.storage.local.set({
+    originatingTabId: '',
+    queryParams: '__gmInitialState',
+    source: '',
+    googleMeetDeclinedUrl: new Date().toISOString(),
+  });
 }
 
 (() => {
@@ -136,10 +200,7 @@ function switchToNewCall(changes) {
 
         // if same meeting
         if (onCall && newMeetingCode === currentMeetingCode) {
-          // close original tab
-          chrome.storage.local.set({
-            googleMeetOpenedUrl: new Date().toISOString(),
-          });
+          closeOriginalTab();
           return;
         }
         // if different meeting and on call
@@ -147,17 +208,14 @@ function switchToNewCall(changes) {
           document.body.prepend(
             buildNextMeetingAlert((shouldSwitch) => {
               if (shouldSwitch) {
-                switchToNewCall(changes);
+                switchToNewCall(changes, true);
               } else {
-                chrome.storage.local.set({
-                  originatingTabId: '',
-                  queryParams: '__gmInitialState',
-                  source: '',
-                  googleMeetDeclinedUrl: new Date().toISOString(),
-                });
+                ignoreNewMeeting();
               }
             }),
           );
+          // close original tab once the ui is shown
+          closeOriginalTab();
         } else {
           switchToNewCall(changes);
         }

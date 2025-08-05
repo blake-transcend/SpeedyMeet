@@ -34,6 +34,9 @@ const STORAGE_KEYS = {
   SHOULD_AUTO_JOIN_OVERRIDE: 'shouldAutoJoinOverride',
 };
 
+// Global state for countdown management
+let activeCountdown = null;
+
 /**
  * Builds the notification elements to inform the user they were redirected to the PWA.
  * @returns {HTMLDivElement} the overlay element containing the notification
@@ -137,22 +140,26 @@ function getCurrentCallStatus() {
  * @param {string} text - The text to speak
  */
 function speakText(text) {
-  chrome.runtime.sendMessage(
-    {
-      type: 'SPEAK_TEXT',
-      text: text,
-      rate: 1.0,
-      pitch: 1.0,
-      volume: 1.0,
-    },
-    (response) => {
-      if (chrome.runtime.lastError) {
-        console.warn('Failed to send TTS message:', chrome.runtime.lastError);
-      } else {
-        console.log('TTS message sent successfully for:', text);
-      }
-    },
-  );
+  if (chrome.runtime) {
+    chrome.runtime.sendMessage(
+      {
+        type: 'SPEAK_TEXT',
+        text: text,
+        rate: 1.0,
+        pitch: 1.0,
+        volume: 1.0,
+      },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          console.warn('Failed to send TTS message:', chrome.runtime.lastError);
+        } else {
+          console.log('TTS message sent successfully for:', text);
+        }
+      },
+    );
+  } else {
+    console.warn('chrome.runtime is not available');
+  }
 }
 
 /**
@@ -160,9 +167,30 @@ function speakText(text) {
  * @returns {HTMLElement|null} The join button element or null if not found
  */
 function findJoinButton() {
-  return [...document.querySelectorAll('button')].find((btn) =>
+  return [...document.querySelectorAll('button:not([disabled])')].find((btn) =>
     JOIN_BUTTON_TEXTS.includes(btn.innerText?.trim().toLowerCase()),
   );
+}
+
+/**
+ * Checks if a countdown is currently active
+ * @returns {boolean} True if a countdown is active
+ */
+function isCountdownActive() {
+  return activeCountdown !== null;
+}
+
+/**
+ * Cancels the currently active countdown if one exists
+ */
+function cancelActiveCountdown() {
+  if (activeCountdown) {
+    console.log('Cancelling active countdown');
+    activeCountdown.cleanup();
+    activeCountdown = null;
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -170,6 +198,9 @@ function findJoinButton() {
  * @param {number} duration - The countdown duration in seconds
  */
 function startAutoJoinCountdown(duration = DEFAULT_COUNTDOWN_DURATION) {
+  // Cancel any existing countdown first
+  cancelActiveCountdown();
+
   const joinMeetingButton = findJoinButton();
   if (!joinMeetingButton) {
     console.log('Auto-join countdown cancelled: No join button found');
@@ -236,6 +267,10 @@ function startAutoJoinCountdown(duration = DEFAULT_COUNTDOWN_DURATION) {
     if (cancelButton && cancelButton.parentNode) {
       cancelButton.remove();
     }
+    // Clear global state
+    if (activeCountdown && activeCountdown.cleanup === cleanup) {
+      activeCountdown = null;
+    }
     console.log('Auto-join countdown cleanup completed');
   }
 
@@ -298,6 +333,13 @@ function startAutoJoinCountdown(duration = DEFAULT_COUNTDOWN_DURATION) {
       }
     }
   }, 1000);
+
+  // Store the countdown in global state
+  activeCountdown = {
+    cleanup,
+    duration,
+    startTime: Date.now(),
+  };
 }
 
 function disableVideoAndMicConfig(joiningNewMeeting) {

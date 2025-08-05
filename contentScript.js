@@ -6,6 +6,33 @@
  */
 
 const OVERLAY_ID = 'meet-switch-overlay';
+const MEETING_CODE_REGEX = /([a-z0-9]{3,5}-[a-z0-9]{3,5}-[a-z0-9]{3,5})/i;
+
+// Timing constants
+const DEFAULT_INTERVAL_MS = 300;
+const DEFAULT_TIMEOUT_MS = 15000;
+const INITIALIZATION_DELAY_MS = 1000;
+const DEFAULT_COUNTDOWN_DURATION = 10;
+const TTS_ANNOUNCEMENT_INTERVAL = 5;
+
+// Aria labels and selectors
+const ARIA_LABELS = {
+  CALL_CONTROLS: 'Call controls',
+  TURN_OFF_MIC: 'Turn off microphone',
+  TURN_OFF_CAMERA: 'Turn off camera',
+};
+
+// Join button text variations
+const JOIN_BUTTON_TEXTS = ['join anyway', 'join', 'ask to join', 'join now'];
+
+// Storage keys
+const STORAGE_KEYS = {
+  GOOGLE_MEET_OPENED_URL: 'googleMeetOpenedUrl',
+  GOOGLE_MEET_DECLINED_URL: 'googleMeetDeclinedUrl',
+  ORIGINATING_TAB_ID: 'originatingTabId',
+  QUERY_PARAMS: 'queryParams',
+  SHOULD_AUTO_JOIN_OVERRIDE: 'shouldAutoJoinOverride',
+};
 
 /**
  * Builds the notification elements to inform the user they were redirected to the PWA.
@@ -84,6 +111,28 @@ function buildNextMeetingAlert(onClick) {
 }
 
 /**
+ * Helper function to determine if currently on a call and extract meeting code
+ * @returns {{onCall: boolean, meetingCode: string|null}} Object with call status and meeting code
+ */
+function getCurrentCallStatus() {
+  const pathMatch = window.location.pathname.match(MEETING_CODE_REGEX);
+  const meetingCode = pathMatch ? pathMatch[1] : null;
+  const notOnLanding = window.location.pathname !== '/landing';
+  const hasCallControls = !!document.querySelector(`[aria-label="${ARIA_LABELS.CALL_CONTROLS}"]`);
+
+  // Check if we're on a call by verifying:
+  // 1. We're not on the landing page
+  // 2. We have call controls present
+  // 3. We have a meeting code
+  const onCall = !!meetingCode && hasCallControls && notOnLanding;
+
+  return {
+    onCall,
+    meetingCode,
+  };
+}
+
+/**
  * Helper function for text-to-speech announcements
  * @param {string} text - The text to speak
  */
@@ -112,9 +161,7 @@ function speakText(text) {
  */
 function findJoinButton() {
   return [...document.querySelectorAll('button')].find((btn) =>
-    ['join anyway', 'join', 'ask to join', 'join now'].includes(
-      btn.innerText?.trim().toLowerCase(),
-    ),
+    JOIN_BUTTON_TEXTS.includes(btn.innerText?.trim().toLowerCase()),
   );
 }
 
@@ -122,7 +169,7 @@ function findJoinButton() {
  * Starts a countdown with TTS announcements before auto-joining
  * @param {number} duration - The countdown duration in seconds
  */
-function startAutoJoinCountdown(duration = 10) {
+function startAutoJoinCountdown(duration = DEFAULT_COUNTDOWN_DURATION) {
   const joinMeetingButton = findJoinButton();
   if (!joinMeetingButton) {
     console.log('Auto-join countdown cancelled: No join button found');
@@ -235,8 +282,8 @@ function startAutoJoinCountdown(duration = 10) {
 
       updateCountdownDisplay();
 
-      // Announce every 5 seconds
-      if (countdown % 5 === 0) {
+      // Announce every N seconds
+      if (countdown % TTS_ANNOUNCEMENT_INTERVAL === 0) {
         speakText(`Auto-joining in ${countdown} seconds`);
       }
     } else {
@@ -258,7 +305,7 @@ function disableVideoAndMicConfig(joiningNewMeeting) {
     ['disableMic', 'disableVideo', 'shouldAutoJoinOverride', 'autoJoin', 'countdownDuration'],
     (res) => {
       // Helper to run interval with timeout
-      function runInterval(fn, intervalMs = 300, timeoutMs = 15000) {
+      function runInterval(fn, intervalMs = DEFAULT_INTERVAL_MS, timeoutMs = DEFAULT_TIMEOUT_MS) {
         const start = Date.now();
         const interval = setInterval(() => {
           const done = fn();
@@ -271,7 +318,9 @@ function disableVideoAndMicConfig(joiningNewMeeting) {
       // Mic button interval
       if (res.disableMic) {
         runInterval(() => {
-          const disableMicBtn = document.querySelector('[aria-label="Turn off microphone"]');
+          const disableMicBtn = document.querySelector(
+            `[aria-label="${ARIA_LABELS.TURN_OFF_MIC}"]`,
+          );
           if (disableMicBtn) {
             disableMicBtn.click();
             return true;
@@ -283,7 +332,9 @@ function disableVideoAndMicConfig(joiningNewMeeting) {
       // Video button interval
       if (res.disableVideo) {
         runInterval(() => {
-          const disableVideoBtn = document.querySelector('[aria-label="Turn off camera"]');
+          const disableVideoBtn = document.querySelector(
+            `[aria-label="${ARIA_LABELS.TURN_OFF_CAMERA}"]`,
+          );
           if (disableVideoBtn) {
             disableVideoBtn.click();
             return true;
@@ -297,9 +348,10 @@ function disableVideoAndMicConfig(joiningNewMeeting) {
         if (res.shouldAutoJoinOverride) {
           runInterval(() => {
             const joinMeetingButton = findJoinButton();
-            if (joinMeetingButton && window.location.pathname !== '/landing') {
+            const { onCall } = getCurrentCallStatus();
+            if (joinMeetingButton && !onCall) {
               chrome.storage.local.set({
-                shouldAutoJoinOverride: false,
+                [STORAGE_KEYS.SHOULD_AUTO_JOIN_OVERRIDE]: false,
               });
               joinMeetingButton.click();
               return true;
@@ -308,10 +360,11 @@ function disableVideoAndMicConfig(joiningNewMeeting) {
           });
         } else if (res.autoJoin) {
           // If auto-join is enabled but not the override, start countdown
-          const countdownDuration = res.countdownDuration || 10;
+          const countdownDuration = res.countdownDuration || DEFAULT_COUNTDOWN_DURATION;
           runInterval(() => {
             const joinMeetingButton = findJoinButton();
-            if (joinMeetingButton && window.location.pathname !== '/landing') {
+            const { onCall } = getCurrentCallStatus();
+            if (joinMeetingButton && !onCall) {
               startAutoJoinCountdown(countdownDuration);
               return true;
             }
@@ -340,7 +393,7 @@ function switchToNewCall(changes, fromAlert) {
     if (fromAlert) {
       // if switching to new meeting manually should auto join
       chrome.storage.local.set({
-        shouldAutoJoinOverride: true,
+        [STORAGE_KEYS.SHOULD_AUTO_JOIN_OVERRIDE]: true,
       });
     }
 
@@ -357,28 +410,29 @@ function switchToNewCall(changes, fromAlert) {
 function closeOriginalTab() {
   // close original tab
   chrome.storage.local.set({
-    googleMeetOpenedUrl: new Date().toISOString(),
+    [STORAGE_KEYS.GOOGLE_MEET_OPENED_URL]: new Date().toISOString(),
   });
 }
 
 function ignoreNewMeeting() {
   chrome.storage.local.set({
-    originatingTabId: '',
-    queryParams: '__gmInitialState',
+    [STORAGE_KEYS.ORIGINATING_TAB_ID]: '',
+    [STORAGE_KEYS.QUERY_PARAMS]: '__gmInitialState',
     source: '',
-    googleMeetDeclinedUrl: new Date().toISOString(),
+    [STORAGE_KEYS.GOOGLE_MEET_DECLINED_URL]: new Date().toISOString(),
   });
 }
 
 (() => {
   if (isPwa()) {
     chrome.storage.onChanged.addListener(function (changes) {
-      if (changes['queryParams'] && changes['queryParams'].newValue !== '__gmInitialState') {
-        const meetingCodeRegex = /([a-z0-9]{3,5}-[a-z0-9]{3,5}-[a-z0-9]{3,5})/i;
-        const [currentMeetingCode] = window.location.pathname.match(meetingCodeRegex) || [];
-        const [newMeetingCode] = changes['queryParams'].newValue.match(meetingCodeRegex) || [];
-        const onCall =
-          !!currentMeetingCode && document.querySelector('[aria-label="Call controls"]');
+      if (
+        changes[STORAGE_KEYS.QUERY_PARAMS] &&
+        changes[STORAGE_KEYS.QUERY_PARAMS].newValue !== '__gmInitialState'
+      ) {
+        const { onCall, meetingCode: currentMeetingCode } = getCurrentCallStatus();
+        const [newMeetingCode] =
+          changes[STORAGE_KEYS.QUERY_PARAMS].newValue.match(MEETING_CODE_REGEX) || [];
 
         // if same meeting
         if (onCall && newMeetingCode === currentMeetingCode) {
@@ -405,15 +459,19 @@ function ignoreNewMeeting() {
     });
 
     setTimeout(() => {
-      disableVideoAndMicConfig(location.pathname !== '/landing');
-    }, 1000);
+      const { onCall } = getCurrentCallStatus();
+      disableVideoAndMicConfig(!onCall);
+    }, INITIALIZATION_DELAY_MS);
   } else {
     // Normal tab, add listener to replace UI with
     chrome.storage.onChanged.addListener(function (changes) {
-      if (changes['originatingTabId'] && changes['originatingTabId'].newValue) {
+      if (
+        changes[STORAGE_KEYS.ORIGINATING_TAB_ID] &&
+        changes[STORAGE_KEYS.ORIGINATING_TAB_ID].newValue
+      ) {
         document.body.appendChild(buildNotificationElements());
       }
-      if (changes['googleMeetDeclinedUrl'] && document.getElementById(OVERLAY_ID)) {
+      if (changes[STORAGE_KEYS.GOOGLE_MEET_DECLINED_URL] && document.getElementById(OVERLAY_ID)) {
         document.getElementById(OVERLAY_ID).remove();
       }
     });

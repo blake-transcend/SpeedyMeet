@@ -196,8 +196,12 @@ function cancelActiveCountdown() {
 /**
  * Starts a countdown with TTS announcements before auto-joining
  * @param {number} duration - The countdown duration in seconds
+ * @param {number} ttsInterval - Interval in seconds for TTS announcements
  */
-function startAutoJoinCountdown(duration = DEFAULT_COUNTDOWN_DURATION) {
+function startAutoJoinCountdown(
+  duration = DEFAULT_COUNTDOWN_DURATION,
+  ttsInterval = TTS_ANNOUNCEMENT_INTERVAL,
+) {
   // Cancel any existing countdown first
   cancelActiveCountdown();
 
@@ -318,7 +322,7 @@ function startAutoJoinCountdown(duration = DEFAULT_COUNTDOWN_DURATION) {
       updateCountdownDisplay();
 
       // Announce every N seconds
-      if (countdown % TTS_ANNOUNCEMENT_INTERVAL === 0) {
+      if (ttsInterval > 0 && countdown % ttsInterval === 0) {
         speakText(`Auto-joining in ${countdown} seconds`);
       }
     } else {
@@ -344,7 +348,14 @@ function startAutoJoinCountdown(duration = DEFAULT_COUNTDOWN_DURATION) {
 
 function disableVideoAndMicConfig(joiningNewMeeting) {
   chrome.storage.local.get(
-    ['disableMic', 'disableVideo', 'shouldAutoJoinOverride', 'autoJoin', 'countdownDuration'],
+    [
+      'disableMic',
+      'disableVideo',
+      'shouldAutoJoinOverride',
+      'autoJoin',
+      'countdownDuration',
+      'ttsAnnouncementInterval',
+    ],
     (res) => {
       // Helper to run interval with timeout
       function runInterval(fn, intervalMs = DEFAULT_INTERVAL_MS, timeoutMs = DEFAULT_TIMEOUT_MS) {
@@ -401,13 +412,13 @@ function disableVideoAndMicConfig(joiningNewMeeting) {
             return false;
           });
         } else if (res.autoJoin) {
-          // If auto-join is enabled but not the override, start countdown
           const countdownDuration = res.countdownDuration || DEFAULT_COUNTDOWN_DURATION;
+          const ttsInterval = res.ttsAnnouncementInterval || TTS_ANNOUNCEMENT_INTERVAL;
           runInterval(() => {
             const joinMeetingButton = findJoinButton();
             const { onCall } = getCurrentCallStatus();
             if (joinMeetingButton && !onCall) {
-              startAutoJoinCountdown(countdownDuration);
+              startAutoJoinCountdown(countdownDuration, ttsInterval);
               return true;
             }
             return false;

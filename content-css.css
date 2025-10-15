@@ -118,7 +118,6 @@
   color: white;
   border: none;
   padding: 8px 16px;
-  margin-left: 12px;
   border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
@@ -134,12 +133,19 @@
 .auto-join-countdown-display {
   display: inline-flex;
   align-items: center;
-  background-color: #e8f0fe;
-  border: 2px solid #1a73e8;
-  border-radius: 6px;
-  padding: 8px 12px;
-  margin-left: 12px;
   font-weight: bold;
   color: #1a73e8;
   font-size: 14px;
+}
+
+.auto-join-active[data-is-touch-wrapper] {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+}
+
+.auto-join-display-container {
+  display: flex;
+  align-items: center;
+  gap: 1.5em;
 }

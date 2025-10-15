@@ -223,6 +223,11 @@ function startAutoJoinCountdown(
   cancelButton.innerText = 'Cancel Auto-Join';
   cancelButton.className = 'auto-join-cancel-btn btn';
 
+  const displayContainer = document.createElement('div');
+  displayContainer.className = 'auto-join-display-container';
+  displayContainer.appendChild(countdownDisplay);
+  displayContainer.appendChild(cancelButton);
+
   // Function to check if elements are still on screen and visible
   function areElementsVisible() {
     const countdownInDom = document.contains(countdownDisplay);
@@ -248,12 +253,11 @@ function startAutoJoinCountdown(
     }
 
     // Remove elements if they exist but are detached
-    if (countdownDisplay.parentNode) countdownDisplay.remove();
-    if (cancelButton.parentNode) cancelButton.remove();
+    if (displayContainer.parentNode) displayContainer.remove();
 
     // Re-add elements
-    currentJoinButton.parentNode.insertBefore(countdownDisplay, currentJoinButton.nextSibling);
-    currentJoinButton.parentNode.insertBefore(cancelButton, countdownDisplay.nextSibling);
+    currentJoinButton.parentNode.insertBefore(displayContainer, currentJoinButton.nextSibling);
+    currentJoinButton.parentNode.className += ' auto-join-active';
 
     console.log('Re-added countdown elements to page');
     return true;
@@ -287,8 +291,8 @@ function startAutoJoinCountdown(
 
   // Insert countdown display and cancel button after join button
   if (joinMeetingButton.parentNode) {
-    joinMeetingButton.parentNode.insertBefore(countdownDisplay, joinMeetingButton.nextSibling);
-    joinMeetingButton.parentNode.insertBefore(cancelButton, countdownDisplay.nextSibling);
+    joinMeetingButton.parentNode.insertBefore(displayContainer, joinMeetingButton.nextSibling);
+    joinMeetingButton.parentNode.className += ' auto-join-active';
   }
 
   // Update countdown display
